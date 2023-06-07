@@ -1,94 +1,132 @@
 const express = require("express");
 const mysql = require("mysql");
 const cors = require("cors");
-const multer = require("multer");
 require("dotenv").config();
-const path = require("path");
 
 const app = express();
 const port = 5000;
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./src/images/");
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
-
-const upload = multer({ storage });
-
 const pool = mysql.createPool({
-  connectionLimit: 10,
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
+    connectionLimit: 10,
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
 });
 
 app.use(cors());
 app.use(express.json());
-app.use("/images", express.static(path.join(__dirname, "src/images")));
 
 pool.getConnection((err, connection) => {
-  if (err) throw err;
-  console.log("Connected to MySQL database...");
-  connection.release();
+    if (err) throw err;
+    console.log("Connected to MySQL Database...");
+    connection.release();
 });
 
 app.listen(port, () => {
-  console.log(`Server berjalan di port ${port}`);
+    console.log(`Server berjalan di port ${port}`);
 });
 
-// mengambil data pada tbl_siswa
-app.get("/api/dataSiswa", (req, res) => {
-  const sql = "SELECT * FROM tbl_siswa";
+
+//mengambil data pada upt_dinas
+app.get("/api/dataUpt", (req, res) => {
+  const sql = "SELECT * FROM upt_dinas";
   pool.query(sql, (err, result) => {
-    if (err) throw err;
-    res.json(result);
+    if (err) {
+      console.error("Error fetching data:", err);
+      res.status(500).json({ message: "Terjadi kesalahan saat mengambil data." });
+      return;
+    }
+
+    // Modify each row by adding a new property "isChecked" based on the absensi value
+    const data = result.map((row) => ({
+      ...row,
+      isChecked: row.absensi === "Hadir",
+    }));
+
+    res.json(data);
   });
 });
 
-// menambahkan data pada tbl_siswa
-app.post("/api/dataSiswa", upload.single("foto"), (req, res) => {
-  const { nis, nama, jk, umur, password } = req.body;
-  const pic_siswa = req.file.filename;
-  const sql = `INSERT INTO tbl_siswa (id_siswa , nis, nm_siswa, jk, umur, pic_siswa, password) VALUES ('', '${nis}', '${nama}', '${jk}', '${umur}', '${pic_siswa}', '${password}')`;
+
+//menambahkan data pada upt_dinas
+app.get("/api/dataUpt", (req, res) => {
+    const { nama_upt, absensi} = req.body;
+    const sql = `INSERT INTO upt_dinas (id_upt, nama_upt, absensi) VALUES ('', '${nama_upt}', '${absensi}')`;
+    pool.query(sql, (err, result) => {
+        if (err) throw err;
+        res.json({ message: 'Data berhasil ditambahkan.'});
+    });
+});
+
+// Updating data in upt_dinas based on checkbox selection
+app.post("/api/updateDataUpt", (req, res) => {
+  const { selectedRows } = req.body;
+
+  // Map through the selected rows and update the absensi field based on the checkbox selection
+  const updatePromises = selectedRows.map((rowId) => {
+    const absensi = rowId ? "Hadir" : "Tidak Hadir";
+    return new Promise((resolve, reject) => {
+      const sql = `UPDATE upt_dinas SET absensi = ? WHERE id_upt = ?`;
+      pool.query(sql, [absensi, rowId], (err, result) => {
+        if (err) reject(err);
+        resolve();
+      });
+    });
+  });
+
+  // Execute all update promises
+  Promise.all(updatePromises)
+    .then(() => {
+      res.json({ message: "Data berhasil diperbarui." });
+    })
+    .catch((err) => {
+      console.error("Error updating data:", err);
+      res.status(500).json({ message: "Terjadi kesalahan saat memperbarui data." });
+    });
+});
+
+// Update dataUpt with the provided ID
+app.put("/api/dataUpt/:id", (req, res) => {
+  const { id } = req.params;
+  const { absensi } = req.body;
+
+  console.log("absensi value:", absensi); // Log the value of absensi
+
+  const sql = `UPDATE upt_dinas SET absensi = '${absensi}' WHERE id_upt = ${id}`;
   pool.query(sql, (err, result) => {
-    if (err) throw err;
-    res.json({ message: "Data berhasil ditambahkan." });
-  });
-});
-
-// mengambil data siswa berdasarkan ID
-app.get("/api/dataSiswa/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "SELECT * FROM tbl_siswa WHERE id_siswa = ?";
-  pool.query(sql, id, (err, result) => {
-    if (err) throw err;
-    res.json(result);
-  });
-});
-
-// memperbarui data siswa berdasarkan ID
-app.put("/api/dataSiswa/:id", (req, res) => {
-  const id = req.params.id;
-  const { nis, nm_siswa, jk, umur } = req.body;
-  const sql =
-    "UPDATE tbl_siswa SET nis = ?, nm_siswa = ?, jk = ?, umur = ? WHERE id_siswa = ?";
-  pool.query(sql, [nis, nm_siswa, jk, umur, id], (err, result) => {
     if (err) throw err;
     res.json({ message: "Data berhasil diperbarui." });
   });
 });
 
-// menghapus data siswa berdasarkan ID
-app.delete("/api/dataSiswa/:id", (req, res) => {
-  const id = req.params.id;
-  const sql = "DELETE FROM tbl_siswa WHERE id_siswa = ?";
-  pool.query(sql, id, (err, result) => {
+// Add a new route for handling the search request
+app.get("/api/dataUpt/search", (req, res) => {
+  const searchTerm = req.query.q; // Get the search query parameter from the request
+  // Modify your database query to include the search term
+  const sql = "SELECT * FROM upt_dinas WHERE nama_upt LIKE ? OR id_upt LIKE ?";
+  const searchValue = `%${searchTerm}%`;
+  pool.query(sql, [searchValue, searchValue], (err, result) => {
     if (err) throw err;
-    res.json({ message: "Data berhasil dihapus." });
+    res.json(result);
+  });
+});
+
+// mengambil data pada Activity
+app.get("/api/dataAct", (req, res) => {
+  const sql = "SELECT * FROM kegiatan";
+  pool.query(sql, (err, result) => {
+    if (err) throw err;
+    res.json(result);
+  });
+});
+
+// Memperbarui data qna
+app.put("/api/dataAct", (req, res) => {
+  const { nama_kegiatan } = req.body;
+  const sql = "UPDATE kegiatan SET nama_kegiatan = ?";
+  pool.query(sql, [nama_kegiatan], (err, result) => {
+    if (err) throw err;
+    res.json({ message: "Data berhasil diperbarui." });
   });
 });
