@@ -32,10 +32,11 @@
 }
 
 .search-input {
-  flex-grow: 1;
+  width: 300px;
   padding: 8px;
   border: 1px solid #ccc;
   border-radius: 4px;
+  margin-left: 15px ;
 }
 
 .search-button {
@@ -67,4 +68,28 @@
   width: 220px;
   background-color: #fff;
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+
+.containers {
+  display: flex;
+  flex-direction: row;
+  margin: 30px;
+}
+
+.table-container {
+  width: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+.textbox-container {
+  width: 50%;
+  padding: 10px;
+  margin-left: 50px;
+  box-sizing: border-box;
+}
+
+.form-control-card Button {
+  margin-left: 10px;
 }

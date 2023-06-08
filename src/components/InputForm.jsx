@@ -4,20 +4,25 @@ import moment from "moment";
 import { Table, Form, Button, Card } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import "./form.css";
-import Header from "./Header";
 import Snackbar from "@mui/material/Snackbar";
 import MuiAlert from "@mui/material/Alert";
+import { TextField } from "@mui/material";
 
 const DataUpt = () => {
   const [data, setData] = useState([]);
   const [selectedRows, setSelectedRows] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [showAlert, setShowAlert] = useState(false);
-  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(moment());
+  const [selectedData, setSelectedData] = useState([]); // State variable to store selected data
+  const [uncheckedData, setUncheckedData] = useState([]); // State variable to store unchecked data
+  const [dataAct, setDataAct] = useState({});
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchData();
+    fetchDataAct();
     const storedSelectedRows = localStorage.getItem("selectedRows");
     if (storedSelectedRows) {
       setSelectedRows(JSON.parse(storedSelectedRows));
@@ -37,6 +42,19 @@ const DataUpt = () => {
     localStorage.setItem("selectedRows", JSON.stringify(selectedRows));
   }, [selectedRows]);
 
+useEffect(() => {
+  // Update the selected data whenever selectedRows or data change
+  const updatedSelectedData = data
+    .filter((row) => selectedRows.includes(row.id_upt))
+    .map((row) => row.nama_upt);
+  setSelectedData(updatedSelectedData);
+
+  const updatedUncheckedData = data
+    .filter((row) => !selectedRows.includes(row.id_upt))
+    .map((row) => row.nama_upt);
+  setUncheckedData(updatedUncheckedData);
+}, [selectedRows, data]);
+
   const fetchData = () => {
     let apiUrl = "http://localhost:5000/api/dataUpt";
     if (searchQuery) {
@@ -55,16 +73,14 @@ const DataUpt = () => {
   };
 
   const handleCheckboxChange = (rowId) => {
-    const updatedData = data.map((row) => {
-      if (row.id_upt === rowId) {
-        return {
-          ...row,
-          isChecked: !row.isChecked,
-        };
-      }
-      return row;
-    });
-    setData(updatedData);
+    const updatedRows = [...selectedRows];
+    const rowIndex = updatedRows.indexOf(rowId);
+    if (rowIndex > -1) {
+      updatedRows.splice(rowIndex, 1);
+    } else {
+      updatedRows.push(rowId);
+    }
+    setSelectedRows(updatedRows);
   };
 
   const handleSubmit = (event) => {
@@ -74,7 +90,7 @@ const DataUpt = () => {
     data.forEach((row) => {
       const updatedRow = {
         ...row,
-        absensi: row.isChecked ? "Hadir" : "Tidak Hadir",
+        absensi: selectedRows.includes(row.id_upt) ? "Hadir" : "Tidak Hadir",
       };
 
       axios
@@ -105,36 +121,78 @@ const DataUpt = () => {
   };
 
   const handleClearAll = () => {
-    const updatedData = data.map((row) => ({
-      ...row,
-      isChecked: false,
+    setSelectedRows([]);
+  };
+
+    const fetchDataAct = () => {
+    axios
+      .get("http://localhost:5000/api/dataAct")
+      .then((res) => setDataAct(res.data[0]))
+      .catch((err) => console.log(err));
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setDataAct((prevDataAct) => ({
+      ...prevDataAct,
+      [name]: value,
     }));
-    setData(updatedData);
   };
 
-  const handleNavigate = () => {
-    navigate("/activity");
+  const handleSubmitAct = async (event) => {
+    event.preventDefault();
+    try {
+      const response = await axios.put(
+        "http://localhost:5000/api/dataAct",
+        dataAct
+      );
+      if (response.data) {
+        alert(response.data.message);
+        navigate("/");
+        return;
+      }
+    } catch (err) {
+      console.error(err);
+      alert(err.message);
+    }
   };
-
   return (
     <div>
+      <h1 style={{ textAlign:"center"}}>Absensi UPT</h1>
       <div className="header-container">
-      <Header />
-      <div className="timestamp-container">
-        <Card className="timestamp-card">
-          <Card.Body>
-            <Card.Text>{currentTime.format("D MMMM YYYY, h:mm:ss a")}</Card.Text>
-          </Card.Body>
-        </Card>
+        <div className="form-control-card">
+            <Card.Body>
+              <Form onSubmit={handleSubmitAct}>
+                <div className="d-flex justify-content-between"> {/* Add this div */}
+                  <Form.Group controlId="formNamaKegiatan">
+                    <Form.Label>Nama Kegiatan</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="nama_kegiatan"
+                      value={dataAct.nama_kegiatan}
+                      onChange={handleInputChange}
+                      placeholder="Masukkan Nama Kegiatan"
+                    />
+                  </Form.Group>
+                  <Button variant="primary" type="submit" style={{ marginTop: "30px", height: "40px"}}>
+                    Simpan
+                  </Button>
+                </div>
+              </Form>
+            </Card.Body>
+          </div>
+        <div className="timestamp-container">
+          <Card className="timestamp-card">
+            <Card.Body>
+              <Card.Text>{currentTime.format("D MMMM YYYY, h:mm:ss a")}</Card.Text>
+            </Card.Body>
+          </Card>
+        </div>
       </div>
-      </div>
-      <Button className="my-1" onClick={handleNavigate}>
-        Ganti Kegiatan
-      </Button>
       <div className="container-search">
         <input
           type="text"
-          placeholder="Search..."
+          placeholder="Cari UPT..."
           value={searchQuery}
           className="search-input"
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -144,7 +202,9 @@ const DataUpt = () => {
           <i className="fas fa-search"></i>
         </button>
       </div>
+      <div className="containers">
       <Form onSubmit={handleSubmit}>
+      <div className="table-container">
         <Table striped bordered hover className="modern-table">
           <thead>
             <tr>
@@ -161,7 +221,7 @@ const DataUpt = () => {
                 <td>
                   <Form.Check
                     type="checkbox"
-                    checked={row.isChecked}
+                    checked={selectedRows.includes(row.id_upt)}
                     onChange={() => handleCheckboxChange(row.id_upt)}
                   />
                 </td>
@@ -169,6 +229,7 @@ const DataUpt = () => {
             ))}
           </tbody>
         </Table>
+        </div>
         <div className="d-flex justify-content-end">
           <Button
             type="button"
@@ -181,8 +242,36 @@ const DataUpt = () => {
           <Button type="submit" variant="primary" className="mt-2 mb-2 mx-4">
             Submit
           </Button>
-        </div>
+      </div>
       </Form>
+        <div className="textbox-container">
+          <div className="result-container">
+            {selectedData.length >= 0 && ( // Change the condition to selectedData.length >= 0
+              <TextField
+                id="selected-rows"
+                label="Hadir"
+                multiline
+                rows={10}
+                value={dataAct.nama_kegiatan + "\n\nHadir : \n" +  selectedData.join("\n")}
+                variant="outlined"
+                style={{ width: "100%" }}
+              />
+            )}
+            {uncheckedData.length > 0 && (
+              <TextField
+                id="unchecked-rows"
+                label="Tidak Hadir"
+                multiline
+                rows={10}
+                value={dataAct.nama_kegiatan + "\n\nTidak Hadir : \n" + uncheckedData.join("\n")}
+                variant="outlined"
+                style={{ width: "100%", marginTop: "20px" }}
+              />
+            )}
+          </div>
+        </div>
+
+      </div>
       <Snackbar
         open={showAlert}
         autoHideDuration={1000}
